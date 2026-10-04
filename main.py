@@ -1,8 +1,20 @@
+
 import time
 import json
+import boto3
 
 from config import SENSORS, STADIUMS
 from sensor_generator import generate_reading
+
+
+# Kinesis configuration
+STREAM_NAME = "stadium-iot-events"
+AWS_REGION = "us-east-1"
+
+kinesis = boto3.client(
+    "kinesis",
+    region_name=AWS_REGION
+)
 
 
 # Track the last execution time for each sensor
@@ -27,6 +39,8 @@ for sensor in SENSORS:
 print("Stadium sensor simulator started...")
 print(f"Stadiums: {len(STADIUMS)}")
 print(f"Sensor instances: {len(SENSORS)}")
+print(f"Kinesis stream: {STREAM_NAME}")
+print(f"AWS region: {AWS_REGION}")
 print("Press Ctrl+C to stop.\n")
 
 
@@ -48,7 +62,22 @@ try:
                 if sensor["sensor_type"] == "crowd_density":
                     stadium_state[key]["crowd_density"] = reading["value"]
 
-                print(json.dumps(reading, indent=2))
+                # Convert event to JSON
+                event_json = json.dumps(reading)
+
+                # Publish event to Kinesis
+                response = kinesis.put_record(
+                    StreamName=STREAM_NAME,
+                    Data=event_json,
+                    PartitionKey=reading["sensor_id"]
+                )
+
+                print(
+                    f"Published: {reading['sensor_type']} | "
+                    f"Sensor: {sensor_id} | "
+                    f"Shard: {response['ShardId']} | "
+                    f"Sequence: {response['SequenceNumber']}"
+                )
 
                 last_run[sensor_id] = current_time
 
@@ -56,3 +85,7 @@ try:
 
 except KeyboardInterrupt:
     print("\nStadium sensor simulator stopped.")
+
+except Exception as error:
+    print(f"\nSimulator stopped due to an error: {error}")
+    raise
